@@ -17,7 +17,9 @@ from fractions import Fraction
 import pandas as pd
 import streamlit as st
 
-from visualizacion.grafico import AMARILLO, TINTA, dibujar, fmt, geometria
+from visualizacion.demo import PASOS_WYNDOR
+from visualizacion.grafico import dibujar, fmt, geometria
+from visualizacion.tableros import razones_texto, render as render_tablero
 
 st.set_page_config(page_title="Simplex Lab", page_icon="📐", layout="wide")
 
@@ -269,34 +271,17 @@ def mostrar(res: dict) -> None:
         if res["modo"] == "Solución directa":
             st.info("Elegiste solución directa. Cambia a Paso a paso y vuelve a resolver para ver cada iteración.")
         else:
-            st.caption("Maqueta de formato con el problema de Wyndor (Max 3x₁ + 5x₂). "
-                       "Aquí van las iteraciones de tu método.")
-            cab = ["Z", "x1", "x2", "s1", "s2", "s3", "LD"]
-            T0 = pd.DataFrame([["1", "-3", "-5", "0", "0", "0", "0"], ["0", "1", "0", "1", "0", "0", "4"],
-                               ["0", "0", "2", "0", "1", "0", "12"], ["0", "3", "2", "0", "0", "1", "18"]],
-                              index=["Z", "s1", "s2", "s3"], columns=cab)
-            T1 = pd.DataFrame([["1", "-3", "0", "0", "5/2", "0", "30"], ["0", "1", "0", "1", "0", "0", "4"],
-                               ["0", "0", "1", "0", "1/2", "0", "6"], ["0", "3", "0", "0", "-1", "1", "6"]],
-                              index=["Z", "s1", "x2", "s3"], columns=cab)
-            pasos = [
-                ("Iteración 0", "x2", "−5, el más negativo de la fila Z", "4/0 no aplica · 12/2 = 6 · 18/2 = 9",
-                 "s2", "2", T0, ("s2", "x2")),
-                ("Iteración 1", "x1", "−3, el único negativo de la fila Z", "4/1 = 4 · 6/0 no aplica · 6/3 = 2",
-                 "s3", "3", T1, ("s3", "x1")),
-            ]
-            for i, (tit, ent, why, raz, sal, piv, tab, pos) in enumerate(pasos):
-                with st.expander(tit, expanded=(i == 0)):
+            st.caption("Maqueta de formato: iteraciones del problema de Wyndor. "
+                       "Se reemplazan por el registro real del motor.")
+            for i, paso in enumerate(PASOS_WYNDOR):
+                with st.expander(f"Iteración {paso['iteracion']}", expanded=(i == 0)):
                     cl, cr = st.columns([1, 2.2])
-                    cl.markdown(f"**Entra** {ent}  \n{why}")
-                    cl.markdown(f"**Razón mínima**  \n{raz}")
-                    cl.markdown(f"**Sale** {sal}  \n**Pivote** {piv}")
-                    cr.dataframe(
-                        tab.style.apply(
-                            lambda d, f=pos[0], c=pos[1]: pd.DataFrame(
-                                [[f"background-color:{AMARILLO};color:{TINTA};font-weight:700" if (r == f and k == c) else ""
-                                  for k in d.columns] for r in d.index], index=d.index, columns=d.columns),
-                            axis=None),
-                        width="stretch")
+                    cl.markdown(f"**Entra** {paso['entra']}  \n{paso['explicacion']}")
+                    cl.markdown(f"**Razón mínima**  \n{razones_texto(paso)}")
+                    pivote = paso.get("pivote") or {}
+                    cl.markdown(f"**Sale** {paso['sale']}  \n"
+                                f"**Pivote** {pivote.get('fila', '—')} / {pivote.get('columna', '—')}")
+                    cr.dataframe(render_tablero(paso), width="stretch")
 
     with t_graf:
         if g is None:
