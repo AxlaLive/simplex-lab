@@ -17,6 +17,7 @@ from fractions import Fraction
 import pandas as pd
 import streamlit as st
 
+from motor.gran_m import resolver_gran_m
 from visualizacion.demo import PASOS_WYNDOR
 from visualizacion.grafico import dibujar, fmt, geometria
 from visualizacion.tableros import razones_texto, render as render_tablero
@@ -186,19 +187,43 @@ def leer(c_df: pd.DataFrame, a_df: pd.DataFrame, n: int):
 
 
 def resolver(p: dict, modo: str) -> dict:
-    """Aquí se conecta el Gran M / simplex revisado propio.
+    """Conecta la interfaz con el motor Gran M.
 
-    Contrato sugerido (lo que la interfaz sabe pintar):
-        estado   : "óptimo" | "múltiples" | "no acotado" | "infactible" | "degenerado"
-        x        : lista de Fraction (variables originales)
-        Z        : Fraction
-        holguras : lista de Fraction (holgura o exceso por restricción)
-        pasos    : [dict(titulo, entra, razon, sale, pivote, tablero: DataFrame, piv: (fila, col))]
-        sens     : dict(precios_sombra=..., costos_reducidos=..., rangos_c=..., rangos_b=...)
-    Por ahora devuelve una vista previa (n = 2) con el método gráfico.
+    Devuelve un diccionario con:
+        p        : el problema tal como se ingresó
+        g        : vista geométrica (solo n = 2) para la pestaña Gráfico
+        m        : resultado del motor, o None si falló
+        error    : mensaje de la excepción, o None
+        modo     : "Solución directa" | "Paso a paso"
     """
     g = geometria(p) if p["n"] == 2 else None
-    return dict(p=p, g=g, modo=modo)
+    m, error = None, None
+    try:
+        m = resolver_gran_m(p)
+    except Exception as exc:  # el motor todavía no cubre todas las entradas
+        error = f"{type(exc).__name__}: {exc}"
+    return dict(p=p, g=g, m=m, error=error, modo=modo)
+
+
+# El plan fija los estados en ASCII sin espacios, el motor hoy devuelve
+# variantes con tilde. El adaptador absorbe la diferencia para que la
+# interfaz funcione antes y después de que el motor se alinee.
+ESTADOS = {
+    "optimo": "óptimo",
+    "óptimo": "óptimo",
+    "multiples": "múltiples",
+    "múltiples": "múltiples",
+    "no_acotado": "no acotado",
+    "no acotado": "no acotado",
+    "infactible": "infactible",
+    "degenerado": "degenerado",
+}
+
+
+def estado_visible(bruto: str) -> str:
+    """Traduce el estado del motor a la clave que entiende la interfaz."""
+    return ESTADOS.get(bruto, bruto)
+
 
 
 # ───────────────────────── Interfaz ─────────────────────────
@@ -221,6 +246,7 @@ st.markdown(HERO, unsafe_allow_html=True)
 TITULOS = {
     "óptimo": ("Solución óptima", False),
     "múltiples": ("Óptimos múltiples", False),
+    "degenerado": ("Solución degenerada", False),
     "no acotado": ("Solución no acotada", True),
     "infactible": ("Sin solución factible", True),
 }
@@ -230,58 +256,109 @@ def chip(titulo: str, malo: bool) -> str:
     return f'<span class="estado{" mal" if malo else ""}">{titulo}</span>'
 
 
+def tabla_restricciones(p: dict, x: list) -> pd.DataFrame:
+    """Evalúa cada restricción en la solución y calcula holgura o exceso."""
+    filas = []
+    for i, (a, bb, s) in enumerate(zip(p["A"], p["b"], p["s"]), 1):
+        uso = sum(float(aj) * float(xj) for aj, xj in zip(a, x))
+        if s == "≤":
+            filas.append((f"R{i}", fmt(uso), "Holgura", fmt(float(bb) - uso)))
+        elif s == "≥":
+            filas.append((f"R{i}", fmt(uso), "Exceso", fmt(uso - float(bb))))
+        else:
+            filas.append((f"R{i}", fmt(uso), "Igualdad", "0"))
+    return pd.DataFrame(filas, columns=["Restricción", "Uso", "Tipo", "Valor"])
+
+
+def bloque_motor(p: dict, m: dict) -> None:
+    """Pinta el resultado devuelto por el motor Gran M."""
+    estado = estado_visible(m["estado"])
+    titulo, malo = TITULOS.get(estado, (estado, False))
+    st.markdown(chip(titulo, malo), unsafe_allow_html=True)
+
+    if estado == "infactible":
+        st.write("Las restricciones se contradicen: ningún punto las cumple todas a la vez.")
+        return
+    if estado == "no acotado":
+        st.write("Z puede mejorar sin límite: la región factible está abierta en la dirección del objetivo.")
+        return
+
+    x = m.get("x") or []
+    xs = "".join(f"<div><span>x{i + 1}</span><b>{fmt(v)}</b></div>" for i, v in enumerate(x))
+    st.markdown(
+        f'<div class="zrow"><div class="zcard"><span>Z óptimo</span>'
+        f'<b>{fmt(m["Z"])}</b></div><div class="xs">{xs}</div></div>', unsafe_allow_html=True)
+    if estado == "múltiples":
+        st.write("Hay más de un punto óptimo: todo el segmento entre los vértices óptimos da el mismo Z.")
+    if estado == "degenerado":
+        st.write("Hay una variable básica en cero: el método puede dar pasos sin mejorar Z.")
+    st.dataframe(tabla_restricciones(p, x), hide_index=True, width="stretch")
+
+
+def bloque_preview(p: dict, g) -> None:
+    """Vista previa con el método gráfico, para cuando el motor no responde."""
+    if g is None:
+        st.info("Con más de dos variables la vista previa no está disponible. "
+                "Aquí aparecerá la solución de tu método.")
+        return
+    titulo, malo = TITULOS[g["estado"]]
+    if g["estado"] == "infactible":
+        st.markdown(chip(titulo, malo), unsafe_allow_html=True)
+        st.write("Las restricciones se contradicen: ningún punto las cumple todas a la vez.")
+    elif g["estado"] == "no acotado":
+        st.markdown(chip(titulo, malo), unsafe_allow_html=True)
+        st.write("Z puede mejorar sin límite: la región factible está abierta en la dirección del objetivo.")
+    else:
+        x = g["mejor"]
+        xs = "".join(f"<div><span>x{i + 1}</span><b>{fmt(v)}</b></div>" for i, v in enumerate(x))
+        st.markdown(
+            f'{chip(titulo, malo)}<div class="zrow"><div class="zcard"><span>Z óptimo</span>'
+            f'<b>{fmt(g["Z"])}</b></div><div class="xs">{xs}</div></div>', unsafe_allow_html=True)
+        if g["estado"] == "múltiples":
+            st.write("Hay más de un punto óptimo: todo el segmento entre los vértices óptimos da el mismo Z.")
+        st.dataframe(tabla_restricciones(p, x), hide_index=True, width="stretch")
+    st.caption("Vista previa calculada con el método gráfico.")
+
+
+def iteraciones(pasos: list) -> None:
+    """Dibuja una lista de pasos con su tablero y su pivote resaltado."""
+    for i, paso in enumerate(pasos):
+        with st.expander(f"Iteración {paso['iteracion']}", expanded=(i == 0)):
+            cl, cr = st.columns([1, 2.2])
+            cl.markdown(f"**Entra** {paso['entra']}  \n{paso['explicacion']}")
+            cl.markdown(f"**Razón mínima**  \n{razones_texto(paso)}")
+            pivote = paso.get("pivote") or {}
+            cl.markdown(f"**Sale** {paso['sale']}  \n"
+                        f"**Pivote** {pivote.get('fila', '—')} / {pivote.get('columna', '—')}")
+            cr.dataframe(render_tablero(paso), width="stretch")
+
+
 def mostrar(res: dict) -> None:
     p, g = res["p"], res["g"]
     t_sol, t_pasos, t_graf, t_sens = st.tabs(["Solución", "Paso a paso", "Gráfico", "Sensibilidad"])
 
     with t_sol:
-        if g is None:
-            st.info("Con más de dos variables la vista previa no está disponible. "
-                    "Aquí aparecerá la solución de tu método.")
+        if res["m"] is not None:
+            bloque_motor(p, res["m"])
+            if not (res["m"].get("pasos") or []):
+                st.caption("El motor todavía no devuelve el registro de iteraciones.")
         else:
-            titulo, malo = TITULOS[g["estado"]]
-            if g["estado"] == "infactible":
-                st.markdown(chip(titulo, malo), unsafe_allow_html=True)
-                st.write("Las restricciones se contradicen: ningún punto las cumple todas a la vez.")
-            elif g["estado"] == "no acotado":
-                st.markdown(chip(titulo, malo), unsafe_allow_html=True)
-                st.write("Z puede mejorar sin límite: la región factible está abierta en la dirección del objetivo.")
-            else:
-                x = g["mejor"]
-                xs = "".join(f"<div><span>x{i + 1}</span><b>{fmt(v)}</b></div>" for i, v in enumerate(x))
-                st.markdown(
-                    f'{chip(titulo, malo)}<div class="zrow"><div class="zcard"><span>Z óptimo</span>'
-                    f'<b>{fmt(g["Z"])}</b></div><div class="xs">{xs}</div></div>', unsafe_allow_html=True)
-                if g["estado"] == "múltiples":
-                    st.write("Hay más de un punto óptimo: todo el segmento entre los vértices óptimos da el mismo Z.")
-                filas = []
-                for i, (a, bb, s) in enumerate(zip(p["A"], p["b"], p["s"]), 1):
-                    uso = float(a[0]) * x[0] + float(a[1]) * x[1]
-                    if s == "≤":
-                        filas.append((f"R{i}", fmt(uso), "Holgura", fmt(float(bb) - uso)))
-                    elif s == "≥":
-                        filas.append((f"R{i}", fmt(uso), "Exceso", fmt(uso - float(bb))))
-                    else:
-                        filas.append((f"R{i}", fmt(uso), "Igualdad", "0"))
-                st.dataframe(pd.DataFrame(filas, columns=["Restricción", "Uso", "Tipo", "Valor"]),
-                             hide_index=True, width="stretch")
-            st.caption("Vista previa calculada con el método gráfico. Se reemplaza por tu Gran M.")
+            if res["error"]:
+                st.error("El motor todavía no puede resolver este problema.")
+                st.code(res["error"], language="text")
+            bloque_preview(p, g)
 
     with t_pasos:
+        pasos = (res["m"] or {}).get("pasos") or []
         if res["modo"] == "Solución directa":
             st.info("Elegiste solución directa. Cambia a Paso a paso y vuelve a resolver para ver cada iteración.")
+        elif pasos:
+            iteraciones(pasos)
         else:
-            st.caption("Maqueta de formato: iteraciones del problema de Wyndor. "
-                       "Se reemplazan por el registro real del motor.")
-            for i, paso in enumerate(PASOS_WYNDOR):
-                with st.expander(f"Iteración {paso['iteracion']}", expanded=(i == 0)):
-                    cl, cr = st.columns([1, 2.2])
-                    cl.markdown(f"**Entra** {paso['entra']}  \n{paso['explicacion']}")
-                    cl.markdown(f"**Razón mínima**  \n{razones_texto(paso)}")
-                    pivote = paso.get("pivote") or {}
-                    cl.markdown(f"**Sale** {paso['sale']}  \n"
-                                f"**Pivote** {pivote.get('fila', '—')} / {pivote.get('columna', '—')}")
-                    cr.dataframe(render_tablero(paso), width="stretch")
+            st.warning("El motor todavía no devuelve las iteraciones de este problema. "
+                       "Abajo se muestra el formato con el problema de Wyndor como referencia visual: "
+                       "no son tus resultados.")
+            iteraciones(PASOS_WYNDOR)
 
     with t_graf:
         if g is None:
