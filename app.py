@@ -102,9 +102,6 @@ EJEMPLOS = {
     "Degenerado": dict(
         sense="Maximizar", c=["3", "9"], A=[["1", "4"], ["1", "2"]], s=["≤", "≤"], b=["8", "4"]),
 }
-NINGUNO = "Elegir un ejemplo"
-
-
 def cols(n: int) -> list[str]:
     return [f"x{i + 1}" for i in range(n)]
 
@@ -147,7 +144,9 @@ def al_cambiar_n() -> None:
 
 
 if "ver" not in st.session_state:
-    _poner(EJEMPLOS[next(iter(EJEMPLOS))])
+    primero = next(iter(EJEMPLOS))
+    _poner(EJEMPLOS[primero])
+    st.session_state.ejemplo = primero
 
 # ───────────────────────── Validación ─────────────────────────
 
@@ -391,7 +390,7 @@ with izq:
         k1.radio("Objetivo", ["Maximizar", "Minimizar"], key="sense", horizontal=True,
                  label_visibility="collapsed")
         k2.number_input("Variables", min_value=1, max_value=10, step=1, key="n", on_change=al_cambiar_n)
-        st.selectbox("Cargar un ejemplo", [NINGUNO, *EJEMPLOS], key="ejemplo", on_change=al_elegir_ejemplo)
+        st.selectbox("Cargar un ejemplo", list(EJEMPLOS), key="ejemplo", on_change=al_elegir_ejemplo)
 
         n, ver = st.session_state.n, st.session_state.ver
         st.markdown('<div class="sec">Función objetivo</div>', unsafe_allow_html=True)
@@ -426,6 +425,6 @@ with der:
         if "res" in st.session_state:
             mostrar(st.session_state.res)
         else:
-            st.markdown('<div class="vacio">Elige un ejemplo o escribe tu problema y pulsa <b>Resolver</b>. '
+            st.markdown('<div class="vacio">Ajusta el problema o carga otro ejemplo y pulsa <b>Resolver</b>. '
                         'Aquí verás la solución, el paso a paso, el gráfico y la sensibilidad.</div>',
                         unsafe_allow_html=True)
