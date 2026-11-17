@@ -10,7 +10,7 @@ Iteration record ("paso") contract:
         "iteracion": 0,
         "columnas": ["Z", "x1", "x2", "s1", "LD"],
         "filas": ["Z", "s1"],
-        "valores": [["1", "-3", "-5", "0", "0"],
+        "tablero": [["1", "-3", "-5", "0", "0"],
                     ["0", "1", "0", "1", "4"]],
         "entra": "x2",
         "razones": ["s1: 4/2 = 2"],
@@ -28,7 +28,7 @@ from .grafico import AMARILLO, TINTA
 
 def construir_tablero(paso: dict) -> pd.DataFrame:
     """Build the tableau DataFrame from an iteration record."""
-    return pd.DataFrame(paso["valores"], index=paso["filas"], columns=paso["columnas"])
+    return pd.DataFrame(paso["tablero"], index=paso["filas"], columns=paso["columnas"])
 
 
 def resaltar_pivote(df: pd.DataFrame, fila: str | None, columna: str | None):
