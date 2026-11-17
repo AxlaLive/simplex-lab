@@ -10,7 +10,7 @@ import unittest
 
 import pandas as pd
 
-from visualizacion.demo import PASOS_WYNDOR
+from tests.fixtures import PASOS_WYNDOR
 from visualizacion.grafico import AMARILLO
 from visualizacion.tableros import construir_tablero, razones_texto, render, resaltar_pivote
 

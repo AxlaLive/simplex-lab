@@ -18,7 +18,6 @@ import pandas as pd
 import streamlit as st
 
 from motor.gran_m import resolver_gran_m
-from visualizacion.demo import PASOS_WYNDOR
 from visualizacion.grafico import dibujar, fmt, geometria
 from visualizacion.tableros import razones_texto, render as render_tablero
 
@@ -354,10 +353,7 @@ def mostrar(res: dict) -> None:
         elif pasos:
             iteraciones(pasos)
         else:
-            st.warning("El motor todavía no devuelve las iteraciones de este problema. "
-                       "Abajo se muestra el formato con el problema de Wyndor como referencia visual: "
-                       "no son tus resultados.")
-            iteraciones(PASOS_WYNDOR)
+            st.info("El motor no devolvió iteraciones para este problema.")
 
     with t_graf:
         if g is None:
