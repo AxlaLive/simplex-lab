@@ -1,0 +1,15 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Office temporary files
+~$*
+
+# Streamlit local secrets
+.streamlit/secrets.toml
