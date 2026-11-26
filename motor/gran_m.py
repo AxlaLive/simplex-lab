@@ -274,6 +274,26 @@ def resolver_gran_m(problema: dict) -> dict:
             if b_tab[i] > 1e-9:
                 return {"estado": "infactible", "x": [], "Z": Fraction(0), "holguras": {}, "pasos": pasos}
 
+    tableau_final = {
+        "filas": ["Z"] + [nombres_cols[base_indices[i]] for i in range(m)],
+        "columnas": ["Z"] + nombres_cols + ["LD"],
+        "tablero_texto": construir_tablero_actual(),
+        "fila_z_regular": fila_z_reg.copy(),
+        "fila_z_m": fila_z_m.copy(),
+        "filas_restricciones": [
+            {
+                "coeficientes": A_amp[i].copy(),
+                "lado_derecho": b_tab[i]
+            }
+            for i in range(m)
+        ],
+        "variables_basicas": [nombres_cols[base_indices[i]] for i in range(m)],
+        "indices_basicos": base_indices.copy(),
+        "restricciones_info": restricciones_info.copy(),
+        "ld_z_regular": sum(b_tab[i] * c_tab[base_indices[i]].regular for i in range(m)),
+        "ld_z_m": sum(b_tab[i] * c_tab[base_indices[i]].m_coeff for i in range(m))
+    }
+
     x_result = [Fraction(0)] * n
     for i in range(m):
         var_idx = base_indices[i]
@@ -295,5 +315,6 @@ def resolver_gran_m(problema: dict) -> dict:
         "x": x_result,
         "Z": z_val,
         "holguras": holguras_dict,
-        "pasos": pasos
+        "pasos": pasos,
+        "tableau_final": tableau_final,
     }
