@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from motor.gran_m import resolver_gran_m
+from motor.sensibilidad import analizar_sensibilidad
 from visualizacion.grafico import dibujar, fmt, geometria
 from visualizacion.tableros import razones_texto, render as render_tablero
 
@@ -368,13 +369,90 @@ def mostrar(res: dict) -> None:
             st.pyplot(dibujar(p, g), width="stretch")
 
     with t_sens:
-        st.caption("Maqueta de las tablas. Se llenan con la tabla final de tu método.")
-        st.dataframe(pd.DataFrame({"Restricción": [f"R{i + 1}" for i in range(len(p["A"]))],
-                                   "Precio sombra": "—", "Rango del lado derecho": "—"}),
-                     hide_index=True, width="stretch")
-        st.dataframe(pd.DataFrame({"Variable": cols(p["n"]), "Valor": "—", "Costo reducido": "—",
-                                   "Rango del coeficiente": "—"}),
-                     hide_index=True, width="stretch")
+        if res["m"] is None:
+            st.info("No se pudo realizar el análisis porque el motor no devolvió una solución.")
+        else:
+            try:
+                sensibilidad = analizar_sensibilidad(p, res["m"])
+                for advertencia in sensibilidad["advertencias"]:
+                    st.warning(advertencia)
+                if res["m"].get("estado") != "optimo" or not sensibilidad["disponible"]:
+                    st.info(
+                        "El análisis de sensibilidad no está disponible. "
+                        + sensibilidad["mensaje"]
+                    )
+                else:
+                    def formato_sensibilidad(valor, es_minimo: bool = False) -> str:
+                        if valor is None:
+                            return "−∞" if es_minimo else "+∞"
+                        if isinstance(valor, Fraction):
+                            if valor.denominator == 1:
+                                return str(valor.numerator)
+                            return f"{valor.numerator}/{valor.denominator}"
+                        return str(valor)
+
+                    if sensibilidad["optimos_multiples"]:
+                        st.info("Se detectaron soluciones óptimas múltiples.")
+
+                    st.caption(
+                        "Los rangos se calculan variando un parámetro a la vez y manteniendo "
+                        "los demás constantes; corresponden a la base actual."
+                    )
+                    st.subheader("Variables")
+                    columnas_variables = [
+                        "Variable",
+                        "Valor óptimo",
+                        "Costo reducido",
+                        "Coeficiente objetivo",
+                        "Mínimo",
+                        "Máximo",
+                    ]
+                    tabla_variables = pd.DataFrame(
+                        [
+                            {
+                                "Variable": variable["variable"],
+                                "Valor óptimo": formato_sensibilidad(variable["valor_optimo"]),
+                                "Costo reducido": formato_sensibilidad(variable["costo_reducido"]),
+                                "Coeficiente objetivo": formato_sensibilidad(variable["coeficiente_objetivo"]),
+                                "Mínimo": formato_sensibilidad(variable["minimo"], es_minimo=True),
+                                "Máximo": formato_sensibilidad(variable["maximo"]),
+                            }
+                            for variable in sensibilidad["variables"]
+                        ],
+                        columns=columnas_variables,
+                    )
+                    st.dataframe(tabla_variables, hide_index=True, width="stretch")
+                    for variable in sensibilidad["variables"]:
+                        st.write(f"**{variable['variable']}:** {variable['interpretacion']}")
+
+                    st.subheader("Restricciones")
+                    columnas_restricciones = [
+                        "Restricción",
+                        "Precio sombra",
+                        "Lado derecho",
+                        "Mínimo",
+                        "Máximo",
+                    ]
+                    tabla_restricciones_sensibilidad = pd.DataFrame(
+                        [
+                            {
+                                "Restricción": restriccion["restriccion"],
+                                "Precio sombra": formato_sensibilidad(restriccion["precio_sombra"]),
+                                "Lado derecho": formato_sensibilidad(restriccion["lado_derecho"]),
+                                "Mínimo": formato_sensibilidad(restriccion["minimo"], es_minimo=True),
+                                "Máximo": formato_sensibilidad(restriccion["maximo"]),
+                            }
+                            for restriccion in sensibilidad["restricciones"]
+                        ],
+                        columns=columnas_restricciones,
+                    )
+                    st.dataframe(tabla_restricciones_sensibilidad, hide_index=True, width="stretch")
+                    for restriccion in sensibilidad["restricciones"]:
+                        st.write(
+                            f"**{restriccion['restriccion']}:** {restriccion['interpretacion']}"
+                        )
+            except Exception:
+                st.error("No se pudo mostrar el análisis de sensibilidad.")
 
 
 izq, der = st.columns([1, 1.45], gap="large")
