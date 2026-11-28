@@ -4,13 +4,14 @@ Ejecutar:  streamlit run app.py
 
 Qué es real y qué es demo
 - Entrada, validación, tablas editables, ejemplos y navegación: reales.
-- Gráfico (n = 2): real, calculado aquí con enumeración de vértices.
-- Solución (n = 2): vista previa sacada del método gráfico.
-- Paso a paso y sensibilidad: maqueta de formato con el problema de Wyndor.
-  Aquí se conecta el motor propio (Gran M / simplex revisado), ver `resolver()`.
+- Solución: calculada por el motor propio de Gran M.
+- Paso a paso: pivotes reales del motor y tabla final del resultado.
+- Gráfico (n = 2): región factible calculada por enumeración de vértices.
+- Sensibilidad: calculada por `motor/sensibilidad.py`.
 """
 from __future__ import annotations
 
+import base64
 import math
 from fractions import Fraction
 
@@ -20,7 +21,12 @@ import streamlit as st
 from motor.gran_m import resolver_gran_m
 from motor.sensibilidad import analizar_sensibilidad
 from visualizacion.grafico import dibujar, fmt, geometria
-from visualizacion.tableros import razones_texto, render as render_tablero
+from visualizacion.informe_pdf import generar_informe_con_vistas
+from visualizacion.tableros import (
+    construir_tablero_final,
+    razones_texto,
+    render as render_tablero,
+)
 
 st.set_page_config(page_title="Simplex Lab", page_icon="📐", layout="wide")
 
@@ -46,10 +52,10 @@ html, body, .stApp, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 .sec { font-size: .85rem; color: #5B6788; margin: .9rem 0 .15rem 0; }
 
 /* selectores tipo píldora (radios horizontales) */
-div[role="radiogroup"] { background: #EEF2FB; border-radius: 12px; padding: 4px; gap: 2px; width: 100%; }
-div[role="radiogroup"] label { flex: 1; justify-content: center; padding: 6px 10px; border-radius: 9px; margin: 0; cursor: pointer; }
+div[role="radiogroup"] { background: #EEF2FB; border-radius: 12px; padding: 4px; gap: 2px; width: 100%; flex-wrap: nowrap; }
+div[role="radiogroup"] label { flex: 1 1 0; min-width: 0; justify-content: center; padding: 6px 5px; border-radius: 9px; margin: 0; cursor: pointer; white-space: nowrap; }
 div[role="radiogroup"] label > div:first-child { display: none; }
-div[role="radiogroup"] label p { font-size: 14px; color: #5B6788; text-align: center; }
+div[role="radiogroup"] label p { font-size: 14px; color: #5B6788; text-align: center; white-space: nowrap; }
 div[role="radiogroup"] label:has(input:checked) { background: #fff; box-shadow: 0 1px 3px rgba(14,27,61,.14); }
 div[role="radiogroup"] label:has(input:checked) p { color: #0E1B3D; font-weight: 700; }
 
@@ -319,7 +325,7 @@ def bloque_preview(p: dict, g) -> None:
     st.caption("Vista previa calculada con el método gráfico.")
 
 
-def iteraciones(pasos: list) -> None:
+def iteraciones(pasos: list, resultado: dict) -> None:
     """Dibuja una lista de pasos con su tablero y su pivote resaltado."""
     for i, paso in enumerate(pasos):
         with st.expander(f"Iteración {paso['iteracion']}", expanded=(i == 0)):
@@ -330,6 +336,52 @@ def iteraciones(pasos: list) -> None:
             cl.markdown(f"**Sale** {paso['sale']}  \n"
                         f"**Pivote** {pivote.get('fila', '—')} / {pivote.get('columna', '—')}")
             cr.dataframe(render_tablero(paso), width="stretch")
+
+    tabla_final = resultado.get("tableau_final")
+    if tabla_final:
+        with st.expander("Tabla final con resultados", expanded=True):
+            st.dataframe(construir_tablero_final(tabla_final), width="stretch")
+            variables = ", ".join(
+                f"x{i + 1} = {fmt(valor)}" for i, valor in enumerate(resultado["x"])
+            )
+            st.markdown(f"**Solución:** {variables}  \n**Z = {fmt(resultado['Z'])}**")
+
+
+def cerrar_vista_previa_pdf() -> None:
+    st.session_state.vista_previa_pdf = False
+
+
+@st.dialog("Vista previa del informe", width="large")
+def vista_previa_pdf(resultado: dict) -> None:
+    pdf, paginas = generar_informe_con_vistas(resultado)
+    st.caption("Revisa el documento completo. La descarga comienza solo al confirmar.")
+    paginas_html = "".join(
+        f'<figure><img src="data:image/png;base64,{base64.b64encode(pagina).decode("ascii")}" '
+        f'alt="Página {numero} de {len(paginas)}"><figcaption>Página {numero} de {len(paginas)}</figcaption></figure>'
+        for numero, pagina in enumerate(paginas, 1)
+    )
+    st.components.v1.html(
+        """<!doctype html><html><head><meta charset="utf-8"><style>
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 8px; background: #EEF2FB; font-family: sans-serif; }
+        figure { margin: 0 auto 18px; max-width: 100%; }
+        img { display: block; width: 100%; height: auto; background: white; }
+        figcaption { padding: 6px 0 0; color: #5B6788; font-size: 12px; text-align: center; }
+        </style></head><body>""" + paginas_html + "</body></html>",
+        height=620,
+        scrolling=True,
+    )
+    cerrar, confirmar = st.columns([1, 1])
+    cerrar.button("Volver", on_click=cerrar_vista_previa_pdf, width="stretch")
+    confirmar.download_button(
+        "Confirmar descarga",
+        data=pdf,
+        file_name="simplex-lab-informe.pdf",
+        mime="application/pdf",
+        icon=":material/download:",
+        on_click=cerrar_vista_previa_pdf,
+        width="stretch",
+    )
 
 
 def mostrar(res: dict) -> None:
@@ -351,8 +403,8 @@ def mostrar(res: dict) -> None:
         pasos = (res["m"] or {}).get("pasos") or []
         if res["modo"] == "Solución directa":
             st.info("Elegiste solución directa. Cambia a Paso a paso y vuelve a resolver para ver cada iteración.")
-        elif pasos:
-            iteraciones(pasos)
+        elif pasos or (res["m"] or {}).get("tableau_final"):
+            iteraciones(pasos, res["m"])
         else:
             st.info("El motor no devolvió iteraciones para este problema.")
 
@@ -455,12 +507,12 @@ def mostrar(res: dict) -> None:
                 st.error("No se pudo mostrar el análisis de sensibilidad.")
 
 
-izq, der = st.columns([1, 1.45], gap="large")
+izq, der = st.columns([1.25, 1.2], gap="large")
 
 with izq:
     with st.container(key="panel_izq"):
         st.markdown('<div class="ptitulo">Tu problema</div>', unsafe_allow_html=True)
-        k1, k2 = st.columns([1.7, 1])
+        k1, k2 = st.columns([2.4, 1])
         k1.radio("Objetivo", ["Maximizar", "Minimizar"], key="sense", horizontal=True,
                  label_visibility="collapsed")
         k2.number_input("Variables", min_value=1, max_value=10, step=1, key="n", on_change=al_cambiar_n)
@@ -497,7 +549,12 @@ with izq:
 with der:
     with st.container(key="panel_der"):
         if "res" in st.session_state:
-            mostrar(st.session_state.res)
+            resultado = st.session_state.res
+            if st.button("Exportar PDF", icon=":material/picture_as_pdf:", width="stretch"):
+                st.session_state.vista_previa_pdf = True
+            mostrar(resultado)
+            if st.session_state.get("vista_previa_pdf"):
+                vista_previa_pdf(resultado)
         else:
             st.markdown('<div class="vacio">Ajusta el problema o carga otro ejemplo y pulsa <b>Resolver</b>. '
                         'Aquí verás la solución, el paso a paso, el gráfico y la sensibilidad.</div>',

@@ -12,7 +12,13 @@ import pandas as pd
 
 from tests.fixtures import PASOS_WYNDOR
 from visualizacion.grafico import AMARILLO
-from visualizacion.tableros import construir_tablero, razones_texto, render, resaltar_pivote
+from visualizacion.tableros import (
+    construir_tablero,
+    construir_tablero_final,
+    razones_texto,
+    render,
+    resaltar_pivote,
+)
 
 
 class TestConstruirTablero(unittest.TestCase):
@@ -27,6 +33,22 @@ class TestConstruirTablero(unittest.TestCase):
         df = construir_tablero(PASOS_WYNDOR[1])
         self.assertEqual(list(df.columns)[-1], "LD")
         self.assertEqual(list(df.index)[2], "x2")
+
+    def test_construye_tabla_final_del_motor(self):
+        tabla_final = {
+            "filas": ["Z", "x2"],
+            "columnas": ["Z", "x1", "x2", "LD"],
+            "tablero_texto": [
+                ["1", "0", "0", "10"],
+                ["0", "1/2", "1", "5/2"],
+            ],
+        }
+
+        df = construir_tablero_final(tabla_final)
+
+        self.assertEqual(list(df.index), ["Z", "x2"])
+        self.assertEqual(list(df.columns), ["Z", "x1", "x2", "LD"])
+        self.assertEqual(df.loc["x2", "LD"], "5/2")
 
 
 class TestResaltarPivote(unittest.TestCase):
