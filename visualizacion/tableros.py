@@ -31,6 +31,15 @@ def construir_tablero(paso: dict) -> pd.DataFrame:
     return pd.DataFrame(paso["tablero"], index=paso["filas"], columns=paso["columnas"])
 
 
+def construir_tablero_final(tabla_final: dict) -> pd.DataFrame:
+    """Build the final tableau DataFrame returned by the optimization engine."""
+    return pd.DataFrame(
+        tabla_final["tablero_texto"],
+        index=tabla_final["filas"],
+        columns=tabla_final["columnas"],
+    )
+
+
 def resaltar_pivote(df: pd.DataFrame, fila: str | None, columna: str | None):
     """Return a styled DataFrame with the pivot cell highlighted.
 

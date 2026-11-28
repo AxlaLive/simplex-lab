@@ -76,12 +76,19 @@ def geometria(p: dict) -> dict:
 def dibujar(p: dict, g: dict):
     """Draw the feasible region, its vertices, and the objective line at the optimum."""
     L = g["L"]
-    fig, ax = plt.subplots(figsize=(6.6, 5.2))
+    fig, ax = plt.subplots(figsize=(8, 6.2))
     ax.set_xlim(0, L)
     ax.set_ylim(0, L)
     if len(g["VB"]) >= 3:
         xs, ys = zip(*g["VB"])
         ax.fill(xs, ys, color=ACENTO, alpha=0.14, lw=0)
+    elif len(g["VB"]) == 2:
+        xs, ys = zip(*g["VB"])
+        ax.plot(xs, ys, color=ACENTO, alpha=0.35, lw=8,
+                solid_capstyle="round", label="Región factible", zorder=2)
+    elif len(g["VB"]) == 1:
+        ax.scatter(*g["VB"][0], s=180, color=ACENTO, alpha=0.3,
+                   label="Región factible", zorder=2)
     t = np.linspace(0, 1, 200)
     for i, (a, bb) in enumerate(zip(p["A"], p["b"]), 1):
         a1, a2, r = float(a[0]), float(a[1]), float(bb)
@@ -113,6 +120,9 @@ def dibujar(p: dict, g: dict):
                     textcoords="offset points", fontsize=8.5, color=TINTA)
     ax.set_xlabel("x₁")
     ax.set_ylabel("x₂")
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_axisbelow(True)
+    ax.grid(True, color="#DCE2EF", linewidth=0.7, alpha=0.75)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     for s in ("left", "bottom"):

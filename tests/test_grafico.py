@@ -12,6 +12,7 @@ from fractions import Fraction
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from visualizacion.grafico import dibujar, fmt, geometria  # noqa: E402
 
@@ -49,6 +50,18 @@ class TestGeometria(unittest.TestCase):
         self.assertEqual(fmt(g["mejor"][0]), "2/5")
         self.assertEqual(fmt(g["mejor"][1]), "9/5")
 
+    def test_igualdad_resalta_region_factible_como_segmento(self):
+        p = problema("Minimizar", [4, 1],
+                     [[3, 1], [4, 3], [-1, -2]], ["=", "≥", "≥"], [3, 6, -4])
+        fig = dibujar(p, geometria(p))
+        segmentos_factibles = [
+            linea for linea in fig.axes[0].lines
+            if linea.get_label() == "Región factible"
+        ]
+        self.assertEqual(len(segmentos_factibles), 1)
+        self.assertGreaterEqual(segmentos_factibles[0].get_linewidth(), 6)
+        plt.close(fig)
+
     def test_caso_4_infactible(self):
         p = problema("Maximizar", [1, 1], [[1, 1], [1, 1]], ["≤", "≥"], [2, 5])
         self.assertEqual(geometria(p)["estado"], "infactible")
@@ -84,6 +97,8 @@ class TestDibujar(unittest.TestCase):
         fig = dibujar(p, geometria(p))
         self.assertTrue(fig.axes)
         self.assertGreater(len(fig.axes[0].collections), 0)
+        self.assertGreaterEqual(fig.get_figwidth(), 8)
+        plt.close(fig)
 
 
 class TestSinDependenciaDeStreamlit(unittest.TestCase):
